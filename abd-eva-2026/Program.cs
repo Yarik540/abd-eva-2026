@@ -93,5 +93,5 @@ app.UseAuthorization();
 app.UseMiddleware<abd.Middlewares.AuthMiddleware>();
 app.MapControllers();
 
-console.WriteLine("Servidor iniciado en http://localhost:5000");
+Console.WriteLine("Servidor iniciado en http://localhost:5000");
 app.Run();
