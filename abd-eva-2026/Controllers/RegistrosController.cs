@@ -1,7 +1,5 @@
 ﻿using abd.models.DTOs;
 using abd.Services;
-
-
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json;
@@ -20,6 +18,7 @@ public class RegistrosController : ControllerBase
         _config = config;
         _embeddingService = embeddingService;
     }
+
     [HttpPost]
     public async Task<IActionResult> CrearRegistro([FromBody] RegistroCreateDTO dto)
     {
@@ -28,14 +27,28 @@ public class RegistrosController : ControllerBase
         if (string.IsNullOrEmpty(userId))
             return Unauthorized("Usuario no autenticado");
 
-        if (string.IsNullOrEmpty(dto.titulolibro))
-            return BadRequest("El título del libro es obligatorio");
-        if (string.IsNullOrEmpty(dto.tipo))
-            return BadRequest("El tipo de operación es obligatorio");
-
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
         var client = _httpClientFactory.CreateClient();
+
+        // Validaciones con log
+        if (string.IsNullOrEmpty(dto.titulolibro))
+        {
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: título del libro obligatorio");
+            return BadRequest("El título del libro es obligatorio");
+        }
+
+        if (string.IsNullOrEmpty(dto.tipo))
+        {
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: tipo de operación obligatorio");
+            return BadRequest("El tipo de operación es obligatorio");
+        }
+
+        if (string.IsNullOrEmpty(dto.autor))
+        {
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: autor obligatorio");
+            return BadRequest("El autor es obligatorio");
+        }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
@@ -61,7 +74,6 @@ public class RegistrosController : ControllerBase
         var estado = response.IsSuccessStatusCode ? "exito" : "error";
         var mensaje = response.IsSuccessStatusCode ? $"Registro insertado: {dto.titulolibro}" : body;
 
-        // Guardar log
         await GuardarLog(client, url, key, userId, "insertar_registro", estado, (int)sw.ElapsedMilliseconds, mensaje);
 
         if (!response.IsSuccessStatusCode)
@@ -74,16 +86,8 @@ public class RegistrosController : ControllerBase
         if (nuevo != null && nuevo.ContainsKey("idreg"))
         {
             var idreg = nuevo["idreg"].GetInt32();
-            var textoParaEmbedding =
-    $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
-
-            await GuardarEmbedding(
-                client,
-                url,
-                key,
-                idreg,
-                textoParaEmbedding
-            );
+            var textoParaEmbedding = $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
+            await GuardarEmbedding(client, url, key, idreg, textoParaEmbedding);
         }
 
         return Ok(new
@@ -92,11 +96,11 @@ public class RegistrosController : ControllerBase
             latencia_ms = sw.ElapsedMilliseconds
         });
     }
+
     private async Task GuardarEmbedding(HttpClient client, string url, string key, int idreg, string texto)
     {
         var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-        // ← mandar como array, no como string
         var jsonObj = new
         {
             idreg = idreg,
@@ -115,23 +119,30 @@ public class RegistrosController : ControllerBase
         Console.WriteLine($"Embedding guardado: {response.StatusCode} - {body}");
     }
 
-    private async Task GuardarLog(HttpClient client, string url, string key, string userId, string accion, string estado, int latencia, string mensaje)
+    private async Task GuardarLog(HttpClient client, string url, string key, string? userId, string accion, string estado, int latencia, string mensaje)
     {
-        var logJson = JsonSerializer.Serialize(new
+        try
         {
-            idusu = userId,
-            accion = accion,
-            estado = estado,
-            latencia_ms = latencia,
-            mensajelog = mensaje
-        });
+            var logJson = JsonSerializer.Serialize(new
+            {
+                idusu = userId,
+                accion = accion,
+                estado = estado,
+                latencia_ms = latencia,
+                mensajelog = mensaje
+            });
 
-        var logRequest = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/logs");
-        logRequest.Headers.Add("apikey", key);
-        logRequest.Headers.Add("Authorization", $"Bearer {key}");
-        logRequest.Content = new StringContent(logJson, Encoding.UTF8, "application/json");
+            var logRequest = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/logs");
+            logRequest.Headers.Add("apikey", key);
+            logRequest.Headers.Add("Authorization", $"Bearer {key}");
+            logRequest.Content = new StringContent(logJson, Encoding.UTF8, "application/json");
 
-        await client.SendAsync(logRequest);
+            await client.SendAsync(logRequest);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error guardando log: {ex.Message}");
+        }
     }
 
     [HttpGet]
@@ -142,10 +153,8 @@ public class RegistrosController : ControllerBase
 
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
-
         var client = _httpClientFactory.CreateClient();
 
-        // Admin ve todos, cliente solo los suyos
         var query = rol == "administrador"
             ? $"{url}/rest/v1/registros?select=*&order=idreg.desc"
             : $"{url}/rest/v1/registros?select=*&idusu=eq.{userId}&order=idreg.desc";

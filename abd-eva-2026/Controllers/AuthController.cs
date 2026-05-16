@@ -1,5 +1,4 @@
-﻿// Controllers/AuthController.cs
-using abd.models.DTOs;
+﻿using abd.models.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http;
@@ -24,6 +23,14 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginDTO dto)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        // Validar campos vacíos
+        if (string.IsNullOrEmpty(dto.email) || string.IsNullOrEmpty(dto.password))
+        {
+            sw.Stop();
+            await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds, "Validación fallida: email y contraseña son obligatorios");
+            return BadRequest("Email y contraseña son obligatorios");
+        }
+
         try
         {
             var session = await _supabase.Auth.SignIn(dto.email, dto.password);
@@ -181,7 +188,7 @@ private async Task GuardarLog(string? userId, string accion, string estado, int 
         {
             var token = authorization.Replace("Bearer ", "");
 
-            // ✅ Obtener datos del usuario ANTES de invalidar el token
+            //Obtener datos del usuario ANTES de invalidar el token
             var handler = new JwtSecurityTokenHandler();
             var jwt = handler.ReadJwtToken(token);
             userId = jwt.Subject;
