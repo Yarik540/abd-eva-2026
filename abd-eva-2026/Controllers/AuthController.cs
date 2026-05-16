@@ -8,6 +8,7 @@ public class AuthController : ControllerBase
 {
     private readonly Supabase.Client _supabase;
 
+    //Luego se implementa: 
     public AuthController(Supabase.Client supabase) 
     {
         _supabase = supabase;
