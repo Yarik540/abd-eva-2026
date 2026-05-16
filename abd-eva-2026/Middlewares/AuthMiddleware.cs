@@ -16,7 +16,7 @@ namespace abd.Middlewares
         {
             var path = context.Request.Path.Value?.ToLower();
 
-            // Rutas públicas
+            // Rutas públicas que no requieren token
             if (path != null && (
                 path.Contains("/api/auth/login") ||
                 path.Contains("/api/auth/logout") ||
@@ -59,10 +59,9 @@ namespace abd.Middlewares
                     return;
                 }
 
-                // Extraer user_metadata como JSON
-                var userMetadataRaw = jwt.Claims.FirstOrDefault(c => c.Type == "user_metadata")?.Value;
+                // Extraer rol desde user_metadata
                 var rol = "cliente";
-
+                var userMetadataRaw = jwt.Claims.FirstOrDefault(c => c.Type == "user_metadata")?.Value;
                 if (!string.IsNullOrEmpty(userMetadataRaw))
                 {
                     var metadata = System.Text.Json.JsonDocument.Parse(userMetadataRaw);
@@ -70,7 +69,8 @@ namespace abd.Middlewares
                         rol = rolElement.GetString() ?? "cliente";
                 }
 
-                context.Items["userId"] = jwt.Subject;
+                // Guardar datos en HttpContext.Items
+                context.Items["userId"] = jwt.Subject; // el ID del usuario (sub)
                 context.Items["userEmail"] = jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value;
                 context.Items["userRol"] = rol;
 
