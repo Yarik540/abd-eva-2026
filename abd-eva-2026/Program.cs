@@ -91,11 +91,8 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton<abd.Middlewares.TokenBlacklist>();
 
 var app = builder.Build();
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
