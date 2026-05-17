@@ -19,16 +19,24 @@ public class AuthController : ControllerBase
         _httpClientFactory = httpClientFactory;
         _config = config;
     }
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDTO dto)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
         // Validar campos vacíos
         if (string.IsNullOrEmpty(dto.email) || string.IsNullOrEmpty(dto.password))
         {
             sw.Stop();
-            await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds, "Validación fallida: email y contraseña son obligatorios");
-            return BadRequest("Email y contraseña son obligatorios");
+            await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds,
+                "Validación fallida: email y contraseña son obligatorios");
+
+            return BadRequest(new
+            {
+                errorType = "validacion_fallida",
+                message = "Email y contraseña son obligatorios."
+            });
         }
 
         try
@@ -38,12 +46,19 @@ public class AuthController : ControllerBase
 
             if (session?.User == null)
             {
-                await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds, "Login fallido: usuario no registrado");
-                return Unauthorized("Credenciales incorrectas");
+                await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds,
+                    "Login fallido: usuario no registrado");
+
+                return Unauthorized(new
+                {
+                    errorType = "usuario_no_existe",
+                    message = "El usuario no está registrado."
+                });
             }
 
             var rol = session.User.UserMetadata?.GetValueOrDefault("rol")?.ToString() ?? "cliente";
-            await GuardarLog(session.User.Id.ToString(), "login", "exito", (int)sw.ElapsedMilliseconds, $"Login exitoso: {dto.email}");
+            await GuardarLog(session.User.Id.ToString(), "login", "exito", (int)sw.ElapsedMilliseconds,
+                $"Login exitoso: {dto.email}");
 
             return Ok(new
             {
@@ -52,7 +67,7 @@ public class AuthController : ControllerBase
                 rol = rol
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             sw.Stop();
 
@@ -61,17 +76,27 @@ public class AuthController : ControllerBase
 
             if (usuarioExiste)
             {
-                // Usuario existe pero contraseña incorrecta — ponemos el idusu
                 var userId = await ObtenerUserId(dto.email);
-                await GuardarLog(userId, "login", "error", (int)sw.ElapsedMilliseconds, $"Login fallido: contraseña incorrecta para {dto.email}");
+                await GuardarLog(userId, "login", "error", (int)sw.ElapsedMilliseconds,
+                    $"Login fallido: contraseña incorrecta para {dto.email}");
+
+                return Unauthorized(new
+                {
+                    errorType = "password_incorrecta",
+                    message = "La contraseña es incorrecta."
+                });
             }
             else
             {
-                // Usuario no existe — idusu null
-                await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds, "Login fallido: usuario no registrado");
-            }
+                await GuardarLog(null, "login", "error", (int)sw.ElapsedMilliseconds,
+                    "Login fallido: usuario no registrado");
 
-            return Unauthorized("Credenciales incorrectas");
+                return Unauthorized(new
+                {
+                    errorType = "usuario_no_existe",
+                    message = "El usuario no está registrado."
+                });
+            }
         }
     }
 
@@ -115,39 +140,37 @@ public class AuthController : ControllerBase
         catch { return null; }
     }
 
-
-
-private async Task GuardarLog(string? userId, string accion, string estado, int latencia, string mensaje)
-{
-    try
+    private async Task GuardarLog(string? userId, string accion, string estado, int latencia, string mensaje)
     {
-        var url = _config["Supabase:Url"];
-        var key = _config["Supabase:Key"];
-
-        var logJson = JsonSerializer.Serialize(new
+        try
         {
-            idusu = userId,
-            accion = accion,
-            estado = estado,
-            latencia_ms = latencia,
-            mensajelog = mensaje
-        });
+            var url = _config["Supabase:Url"];
+            var key = _config["Supabase:Key"];
 
-        var client = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/logs");
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
-        request.Content = new StringContent(logJson, Encoding.UTF8, "application/json");
+            var logJson = JsonSerializer.Serialize(new
+            {
+                idusu = userId,
+                accion = accion,
+                estado = estado,
+                latencia_ms = latencia,
+                mensajelog = mensaje
+            });
 
-        await client.SendAsync(request);
+            var client = _httpClientFactory.CreateClient();
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/logs");
+            request.Headers.Add("apikey", key);
+            request.Headers.Add("Authorization", $"Bearer {key}");
+            request.Content = new StringContent(logJson, Encoding.UTF8, "application/json");
+
+            await client.SendAsync(request);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error guardando log: {ex.Message}");
+        }
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error guardando log: {ex.Message}");
-    }
-}
 
-[HttpGet("me")]
+    [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
         try
@@ -155,13 +178,21 @@ private async Task GuardarLog(string? userId, string accion, string estado, int 
             var authorization = Request.Headers["Authorization"].ToString();
 
             if (string.IsNullOrEmpty(authorization) || !authorization.StartsWith("Bearer "))
-                return Unauthorized("Token requerido");
+                return Unauthorized(new
+                {
+                    errorType = "token_requerido",
+                    message = "Token requerido."
+                });
 
             var token = authorization.Replace("Bearer ", "");
             var user = await _supabase.Auth.GetUser(token);
 
             if (user?.UserMetadata == null)
-                return Unauthorized("Token inválido");
+                return Unauthorized(new
+                {
+                    errorType = "token_invalido",
+                    message = "Token inválido."
+                });
 
             var rol = user.UserMetadata.GetValueOrDefault("rol")?.ToString() ?? "cliente";
 
@@ -174,9 +205,14 @@ private async Task GuardarLog(string? userId, string accion, string estado, int 
         }
         catch (Exception ex)
         {
-            return Unauthorized(ex.Message);
+            return Unauthorized(new
+            {
+                errorType = "token_error",
+                message = ex.Message
+            });
         }
     }
+
     [HttpPost("logout")]
     public async Task<IActionResult> Logout([FromServices] abd.Middlewares.TokenBlacklist blacklist)
     {
@@ -188,18 +224,15 @@ private async Task GuardarLog(string? userId, string accion, string estado, int 
         {
             var token = authorization.Replace("Bearer ", "");
 
-            //Obtener datos del usuario ANTES de invalidar el token
             var handler = new JwtSecurityTokenHandler();
             var jwt = handler.ReadJwtToken(token);
             userId = jwt.Subject;
             email = jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value;
 
-            // Ahora sí, invalidar el token
             blacklist.Add(token);
         }
 
         await GuardarLog(userId, "logout", "exito", 0, $"Logout exitoso: {email}");
-        return Ok("Sesión cerrada");
+        return Ok(new { message = "Sesión cerrada" });
     }
-
 }

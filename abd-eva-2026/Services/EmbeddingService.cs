@@ -18,59 +18,56 @@ namespace abd.Services
 
         public async Task<float[]> GenerarEmbeddingAsync(string texto)
         {
-            try
+            var apiKey = _config["OpenAI:ApiKey"];
+            var model = _config["OpenAI:Model"]; // 👈 IMPORTANTE
+
+            var client = _httpClientFactory.CreateClient();
+
+            var requestBody = new
             {
-                var apiKey = _config["HuggingFace:ApiKey"];
-                var model = _config["HuggingFace:Model"];
+                model = model,
+                input = texto
+            };
 
-                var client = _httpClientFactory.CreateClient();
+            var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "https://api.openai.com/v1/embeddings"
+            );
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    inputs = $"Represent this sentence for searching relevant passages: {texto}"
-                });
+            request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
-                var request = new HttpRequestMessage(
-                    HttpMethod.Post,
-                    $"https://router.huggingface.co/hf-inference/models/{model}"
-                );
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json"
+            );
 
-                request.Headers.Add("Authorization", $"Bearer {apiKey}");
+            var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
 
-                request.Content = new StringContent(
-                    json,
-                    Encoding.UTF8,
-                    "application/json"
-                );
+            Console.WriteLine("===== OPENAI RESPONSE =====");
+            Console.WriteLine(body.Substring(0, Math.Min(300, body.Length)));
 
-                var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                throw new Exception(body);
 
-                var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
 
-                Console.WriteLine("===== HUGGINGFACE RESPONSE =====");
-                Console.WriteLine(body.Substring(0, Math.Min(300, body.Length)));
+            var embedding = doc.RootElement
+                .GetProperty("data")[0]
+                .GetProperty("embedding")
+                .EnumerateArray()
+                .Select(x => x.GetDouble())   // 👈 FIX IMPORTANTE
+                .Select(x => (float)x)
+                .ToArray();
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    throw new Exception(body);
-                }
+            Console.WriteLine($"Embedding generado: {embedding.Length} dimensiones");
 
-                var embedding = JsonSerializer.Deserialize<float[]>(body);
+            // OpenAI embeddings-3-small = 1536
+            if (embedding.Length != 1536)
+                throw new Exception($"Dimensión incorrecta: {embedding.Length}");
 
-                if (embedding == null || embedding.Length == 0)
-                {
-                    throw new Exception("Embedding vacío");
-                }
-
-                Console.WriteLine($"Embedding generado: {embedding.Length} dimensiones");
-
-                return embedding;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"ERROR EMBEDDING: {ex.Message}");
-                throw;
-            }
+            return embedding;
         }
 
         public double SimilitudCoseno(float[] a, float[] b)
