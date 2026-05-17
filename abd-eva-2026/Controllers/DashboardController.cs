@@ -46,6 +46,10 @@ public class DashboardController : ControllerBase
         var ultimosRegistros = await GetUltimosRegistros(client, url, key);
 
         // ── CALIDAD DE DATOS ──
+        var registrosIncompletos = await ContarRegistrosIncompletos(client, url, key);
+        var duplicadosOSimilares = await ContarDuplicadosOSimilares(client, url, key);
+        var nivelPromedioSimilitud = await GetNivelPromedioSimilitud(client, url, key);
+        var registrosRechazados = await ContarRegistrosRechazados(client, url, key);
         var ultimosErrores = await GetUltimosErrores(client, url, key);
 
         return Ok(new
@@ -72,6 +76,10 @@ public class DashboardController : ControllerBase
             },
             calidad_datos = new
             {
+                registros_incompletos = registrosIncompletos,
+                registros_duplicados_o_similares = duplicadosOSimilares,
+                nivel_promedio_similitud = nivelPromedioSimilitud,
+                registros_rechazados = registrosRechazados,
                 ultimos_errores = ultimosErrores
             }
         });
@@ -256,4 +264,68 @@ public class DashboardController : ControllerBase
         var body = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<object>(body) ?? new();
     }
+    private async Task<int> ContarRegistrosIncompletos(HttpClient client, string url, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=*&accion=eq.insertar_registro&estado=eq.error");
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
+        return lista?.Count ?? 0;
+    }
+    private async Task<int> ContarDuplicadosOSimilares(HttpClient client, string url, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=*&accion=in.(registro_duplicado,registro_similar_alto,registro_similar_medio)");
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
+        return lista?.Count ?? 0;
+    }
+
+    private async Task<double> GetNivelPromedioSimilitud(HttpClient client, string url, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=mensajelog&accion=eq.busqueda_semantica&estado=eq.exito");
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+
+        if (logs == null || logs.Count == 0) return 0;
+
+        var valores = logs
+            .Select(l => {
+                var msg = l["mensajelog"].GetString();
+                if (msg != null && msg.Contains("Promedio de similitud"))
+                {
+                    var partes = msg.Split(':');
+                    if (partes.Length == 2 && double.TryParse(partes[1], out var val))
+                        return val;
+                }
+                return (double?)null;
+            })
+            .Where(v => v.HasValue)
+            .Select(v => v.Value)
+            .ToList();
+
+        return valores.Count > 0 ? Math.Round(valores.Average(), 2) : 0;
+    }
+    private async Task<int> ContarRegistrosRechazados(HttpClient client, string url, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=*&accion=eq.insertar_registro&estado=eq.error");
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
+        return lista?.Count ?? 0;
+    }
+
 }

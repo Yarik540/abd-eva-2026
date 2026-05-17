@@ -83,13 +83,81 @@ public class RegistrosController : ControllerBase
         var lista = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
         var nuevo = lista?.FirstOrDefault();
 
-        // Guardar embedding
+        // --- BLOQUE DE SIMILITUD ---
         if (nuevo != null && nuevo.ContainsKey("idreg"))
         {
             var idreg = nuevo["idreg"].GetInt32();
             var textoParaEmbedding = $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
+
+            // Generar embedding para comparación
+            var embedding = await _embeddingService.GenerarEmbeddingAsync(textoParaEmbedding);
+
+            var bodyObj = new
+            {
+                query_embedding = embedding,
+                similitud_minima = 0.75f, // el más bajo de los umbrales
+                cantidad_resultados = 5
+            };
+
+            var jsonBusqueda = JsonSerializer.Serialize(bodyObj);
+            var requestBusqueda = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/rpc/buscar_registros_semanticos");
+            requestBusqueda.Headers.Add("apikey", key);
+            requestBusqueda.Headers.Add("Authorization", $"Bearer {key}");
+            requestBusqueda.Content = new StringContent(jsonBusqueda, Encoding.UTF8, "application/json");
+
+            var responseBusqueda = await client.SendAsync(requestBusqueda);
+            var bodyBusqueda = await responseBusqueda.Content.ReadAsStringAsync();
+            var similares = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyBusqueda);
+
+            if (similares != null)
+            {
+                similares = similares
+                    .Where(r => r["idreg"].GetInt32() != idreg)
+                    .ToList();
+
+                if (similares.Count > 0)
+                {
+                    var maxSimilitud = similares.Max(r => r["similitud"].GetDouble());
+
+                    if (maxSimilitud >= 0.95)
+                    {
+                        await GuardarLog(client, url, key, userId,
+                            "registro_duplicado",
+                            "detectado",
+                            (int)sw.ElapsedMilliseconds,
+                            $"Duplicado exacto detectado con similitud {maxSimilitud}");
+                    }
+                    else if (maxSimilitud >= 0.85)
+                    {
+                        await GuardarLog(client, url, key, userId,
+                            "registro_similar_alto",
+                            "detectado",
+                            (int)sw.ElapsedMilliseconds,
+                            $"Registro muy similar detectado con similitud {maxSimilitud}");
+                    }
+                    else if (maxSimilitud >= 0.75)
+                    {
+                        await GuardarLog(client, url, key, userId,
+                            "registro_similar_medio",
+                            "detectado",
+                            (int)sw.ElapsedMilliseconds,
+                            $"Registro algo similar detectado con similitud {maxSimilitud}");
+                    }
+                    var promedioSimilitud = similares.Average(r => r["similitud"].GetDouble());
+
+                    await GuardarLog(client, url, key, userId,
+                        "busqueda_semantica",
+                        "exito",
+                        (int)sw.ElapsedMilliseconds,
+                        $"Promedio de similitud: {promedioSimilitud:F2}");
+                }
+
+            }
+
+            // Guardar embedding en registros_vectores
             await GuardarEmbedding(client, url, key, idreg, textoParaEmbedding);
         }
+        // --- FIN BLOQUE DE SIMILITUD ---
 
         return Ok(new
         {
@@ -97,6 +165,7 @@ public class RegistrosController : ControllerBase
             latencia_ms = sw.ElapsedMilliseconds
         });
     }
+
 
     private async Task GuardarEmbedding(HttpClient client, string url, string key, int idreg, string texto)
     {
