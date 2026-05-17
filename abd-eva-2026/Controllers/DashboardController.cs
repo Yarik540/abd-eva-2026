@@ -34,12 +34,11 @@ public class DashboardController : ControllerBase
         var totalErrores = await ContarErrores(client, url, key);
         var tasaExito = await GetTasaExito(client, url, key);
         var totalConsultas = await ContarConsultasAgente(client, url, key);
-        var latenciaPromedio = await GetLatenciaPromedio(client, url, key);
 
         // ── RENDIMIENTO VECTORIAL ──
+        var latenciaPromedio = await GetLatenciaPromedio(client, url, key);
         var tiempoConsultaSemantica = await GetTiempoPromedioConsultaSemantica(client, url, key);
-        var consultasExitosas = await ContarConsultasExitosas(client, url, key);
-        var consultasSinResultado = await ContarConsultasSinResultado(client, url, key);
+        var tiempoEmbeddings = await GetTiempoPromedioEmbeddings(client, url, key);
         var totalVectores = await ContarVectores(client, url, key);
 
         // ── ACTIVIDAD DE USUARIOS ──
@@ -57,14 +56,13 @@ public class DashboardController : ControllerBase
                 total_usuarios = totalUsuarios,
                 total_errores = totalErrores,
                 tasa_exito = tasaExito,
-                total_consultas_agente = totalConsultas,
-                latencia_promedio_ms = latenciaPromedio
+                total_consultas_agente = totalConsultas
             },
             rendimiento_vectorial = new
             {
+                latencia_promedio_ms = latenciaPromedio,
                 tiempo_promedio_consulta_semantica_ms = tiempoConsultaSemantica,
-                consultas_exitosas = consultasExitosas,
-                consultas_sin_resultado = consultasSinResultado,
+                tiempo_promedio_generacion_embeddings_ms = tiempoEmbeddings,
                 total_vectores_almacenados = totalVectores
             },
             actividad_usuarios = new
@@ -201,6 +199,24 @@ public class DashboardController : ControllerBase
         var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
         return lista?.Count ?? 0;
     }
+
+    private async Task<double> GetTiempoPromedioEmbeddings(HttpClient client, string url, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=tiempo_embedding_ms&accion=eq.generar_embedding&estado=eq.exito");
+
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        var registros = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+        if (registros == null || registros.Count == 0) return 0;
+
+        return Math.Round(registros.Average(r => r["tiempo_embedding_ms"].GetDouble()), 2);
+    }
+
 
     // ── ACTIVIDAD USUARIOS ──
 
