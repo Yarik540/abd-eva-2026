@@ -26,7 +26,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
-            "https://*.vercel.app"  // ← agregar para Vercel
+             "https://abd-biblioteca-frontend.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
@@ -104,5 +104,4 @@ app.UseAuthorization();
 app.UseMiddleware<abd.Middlewares.AuthMiddleware>();
 app.MapControllers();
 
-Console.WriteLine("Servidor iniciado en http://localhost:5000");
 app.Run();
