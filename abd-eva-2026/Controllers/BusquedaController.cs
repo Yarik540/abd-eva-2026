@@ -1,34 +1,35 @@
-﻿    using Microsoft.AspNetCore.Mvc;
-    using System.Text;
-    using System.Text.Json;
-    using abd.Services;
+﻿using Microsoft.AspNetCore.Mvc;
+using System.Text;
+using System.Text.Json;
+using abd.Services;
 
-    [ApiController]
-    [Route("api/[controller]")]
-    public class BusquedaController : ControllerBase
+[ApiController]
+[Route("api/[controller]")]
+public class BusquedaController : ControllerBase
+{
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _config;
+    private readonly EmbeddingService _embeddingService;
+
+    public BusquedaController(
+        IHttpClientFactory httpClientFactory,
+        IConfiguration config,
+        EmbeddingService embeddingService)
     {
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IConfiguration _config;
-        private readonly EmbeddingService _embeddingService;
+        _httpClientFactory = httpClientFactory;
+        _config = config;
+        _embeddingService = embeddingService;
+    }
 
-        public BusquedaController(
-            IHttpClientFactory httpClientFactory,
-            IConfiguration config,
-            EmbeddingService embeddingService)
-        {
-            _httpClientFactory = httpClientFactory;
-            _config = config;
-            _embeddingService = embeddingService;
-        }
     [HttpGet]
     public async Task<IActionResult> BuscarSemantico(
-    [FromQuery] string? texto,
-    [FromQuery] float similitudMinima = 0.25f,
-    [FromQuery] int top = 5)
+        [FromQuery] string? texto,
+        [FromQuery] float similitudMinima = 0.25f,
+        [FromQuery] int top = 5)
     {
         var userId = HttpContext.Items["userId"]?.ToString();
         var url = _config["Supabase:Url"];
-        var serviceRoleKey = _config["Supabase:ServiceRoleKey"]; 
+        var serviceRoleKey = _config["Supabase:ServiceRoleKey"];
         var client = _httpClientFactory.CreateClient();
 
         if (string.IsNullOrWhiteSpace(texto))
@@ -103,7 +104,7 @@
                 estado = estado,
                 latencia_ms = latencia,
                 mensajelog = mensaje,
-                fechalog = DateTime.UtcNow 
+                fechalog = DateTime.UtcNow
             });
 
             var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/logs");

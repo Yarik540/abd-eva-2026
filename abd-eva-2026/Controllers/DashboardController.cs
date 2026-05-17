@@ -157,15 +157,16 @@ public class DashboardController : ControllerBase
 
     private async Task<double> GetTiempoPromedioConsultaSemantica(HttpClient client, string url, string key)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/consultas_agente?select=tiempo_consulta_ms");
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/logs?select=latencia_ms&accion=eq.busqueda_semantica&estado=eq.exito");
         request.Headers.Add("apikey", key);
         request.Headers.Add("Authorization", $"Bearer {key}");
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-        var consultas = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
-        if (consultas == null || consultas.Count == 0) return 0;
-        return Math.Round(consultas.Average(c => c["tiempo_consulta_ms"].GetDouble()), 2);
+        var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+        if (logs == null || logs.Count == 0) return 0;
+        return Math.Round(logs.Average(l => l["latencia_ms"].GetDouble()), 2);
     }
+
 
     private async Task<int> ContarConsultasExitosas(HttpClient client, string url, string key)
     {

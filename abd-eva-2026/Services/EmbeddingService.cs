@@ -15,7 +15,9 @@ namespace abd.Services
             _httpClientFactory = httpClientFactory;
             _config = config;
         }
-        public async Task<float[]> GenerarEmbeddingAsync(string texto)
+        public async Task<float[]> GenerarEmbeddingAsync(
+            string texto,
+            bool guardarLog = false)
         {
             var apiKey = _config["OpenAI:ApiKey"];
             var model = _config["OpenAI:Model"];
@@ -40,8 +42,10 @@ namespace abd.Services
                 .EnumerateArray().Select(x => (float)x.GetDouble()).ToArray();
 
             // Guardar log con tiempo de generación
-            await GuardarLogEmbedding((int)sw.ElapsedMilliseconds);
-
+            if (guardarLog)
+            {
+                await GuardarLogEmbedding((int)sw.ElapsedMilliseconds);
+            }
             return embedding;
         }
         private async Task GuardarLogEmbedding(int tiempoMs)
