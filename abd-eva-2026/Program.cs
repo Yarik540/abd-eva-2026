@@ -26,7 +26,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
-             "https://abd-biblioteca-frontend.vercel.app"
+             "https://abd-bibl-frontend.vercel.app/"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
