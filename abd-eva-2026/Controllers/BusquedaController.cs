@@ -23,7 +23,7 @@
     [HttpGet]
     public async Task<IActionResult> BuscarSemantico(
     [FromQuery] string texto,
-    [FromQuery] float similitudMinima = 0.5f,
+    [FromQuery] float similitudMinima = 0.25f,
     [FromQuery] int top = 5)
     {
         var userId = HttpContext.Items["userId"]?.ToString();

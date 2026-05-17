@@ -3,6 +3,7 @@ using abd.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -118,6 +119,7 @@ public class RegistrosController : ControllerBase
         var body = await response.Content.ReadAsStringAsync();
         Console.WriteLine($"Embedding guardado: {response.StatusCode} - {body}");
     }
+
 
     private async Task GuardarLog(HttpClient client, string url, string key, string? userId, string accion, string estado, int latencia, string mensaje)
     {
