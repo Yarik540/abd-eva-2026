@@ -131,7 +131,7 @@ public class RegistrosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetRegistros([FromQuery] string? p_idusu = null)
+    public async Task<IActionResult> ListarApuntes([FromQuery] string? p_idusu = null)
     {
         var rol = HttpContext.Items["userRol"]?.ToString();
         
