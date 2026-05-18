@@ -25,7 +25,8 @@ public class BusquedaController : ControllerBase
     public async Task<IActionResult> BuscarSemantico(
         [FromQuery] string texto,
         [FromQuery] float similitudMinima = 0.5f,
-        [FromQuery] int top = 5)
+        [FromQuery] int top = 5,
+        [FromQuery] string? p_idusu = null)
     {
         if (string.IsNullOrWhiteSpace(texto))
             return BadRequest("Debe enviar un texto");
@@ -36,14 +37,18 @@ public class BusquedaController : ControllerBase
 
             var url = _config["Supabase:Url"];
             var key = _config["Supabase:Key"];
-            var userId = HttpContext.Items["userId"]?.ToString();
+            
+            // Priorizamos el p_idusu que viene de la query (n8n), si no, usamos el del Token
+            var userId = !string.IsNullOrEmpty(p_idusu) 
+                ? p_idusu 
+                : HttpContext.Items["userId"]?.ToString();
 
             var client = _httpClientFactory.CreateClient();
 
             // 1. Generar embedding
             var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-            Console.WriteLine($"Embedding generado: {embedding.Length} para usuario: {userId}");
+            Console.WriteLine($"Embedding generado para usuario: {userId}");
 
             // 2. Body CORRECTO incluyendo p_idusu para filtrar por usuario
             var bodyObj = new
