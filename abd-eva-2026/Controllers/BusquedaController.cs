@@ -67,7 +67,6 @@ public class BusquedaController : ControllerBase
                 return BadRequest(body);
 
             var resultados = JsonSerializer.Deserialize<List<object>>(body);
-            Console.WriteLine($"BÚSQUEDA: '{texto}' | Usuario: {userId} | Encontrados: {resultados?.Count ?? 0}");
 
             return Ok(new
             {

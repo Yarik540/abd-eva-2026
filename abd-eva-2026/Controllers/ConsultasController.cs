@@ -46,7 +46,6 @@ public class ConsultasController : ControllerBase
             };
 
             var json = JsonSerializer.Serialize(datosParaGuardar);
-            Console.WriteLine($"GUARDANDO CONSULTA: {json}");
 
             var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/consultas_agente");
             request.Headers.Add("apikey", key);

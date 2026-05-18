@@ -1,7 +1,5 @@
-﻿using abd.models.DTOs;
+using abd.models.DTOs;
 using abd.Services;
-
-
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json;
@@ -110,9 +108,7 @@ public class RegistrosController : ControllerBase
         request.Headers.Add("Authorization", $"Bearer {key}");
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        Console.WriteLine($"Embedding guardado: {response.StatusCode} - {body}");
+        await client.SendAsync(request);
     }
 
     private async Task GuardarLog(HttpClient client, string url, string key, string userId, string accion, string estado, int latencia, string mensaje)
@@ -135,10 +131,14 @@ public class RegistrosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> ObtenerRegistros()
+    public async Task<IActionResult> ObtenerRegistros([FromQuery] string? p_idusu = null)
     {
-        var userId = HttpContext.Items["userId"]?.ToString();
         var rol = HttpContext.Items["userRol"]?.ToString();
+        
+        // Priorizar p_idusu de la query si existe
+        var userId = !string.IsNullOrEmpty(p_idusu)
+            ? p_idusu
+            : HttpContext.Items["userId"]?.ToString();
 
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
@@ -146,7 +146,7 @@ public class RegistrosController : ControllerBase
         var client = _httpClientFactory.CreateClient();
 
         // Admin ve todos, cliente solo los suyos
-        var query = rol == "administrador"
+        var query = rol == "administrador" && string.IsNullOrEmpty(p_idusu)
             ? $"{url}/rest/v1/registros?select=*&order=idreg.desc"
             : $"{url}/rest/v1/registros?select=*&idusu=eq.{userId}&order=idreg.desc";
 
@@ -161,5 +161,34 @@ public class RegistrosController : ControllerBase
             return BadRequest(body);
 
         return Ok(JsonSerializer.Deserialize<object>(body));
+    }
+
+    [HttpGet("conteo")]
+    public async Task<IActionResult> ContarMisRegistros([FromQuery] string? p_idusu = null)
+    {
+        var userId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : HttpContext.Items["userId"]?.ToString();
+
+        var url = _config["Supabase:Url"]?.TrimEnd('/');
+        var key = _config["Supabase:Key"];
+        var client = _httpClientFactory.CreateClient();
+
+        // Pedimos todos los registros de ese usuario
+        var query = $"{url}/rest/v1/registros?select=idreg&idusu=eq.{userId}";
+        
+        var request = new HttpRequestMessage(HttpMethod.Get, query);
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        
+        var lista = JsonSerializer.Deserialize<List<object>>(body);
+        int total = lista?.Count ?? 0;
+
+        return Ok(new { 
+            idusu = userId, 
+            total_registros = total,
+            mensaje = $"El usuario tiene un total de {total} registros ingresados." 
+        });
     }
 }
