@@ -65,4 +65,58 @@ public class ConsultasController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+    [HttpGet("metricas")]
+    public async Task<IActionResult> GetMetricas()
+    {
+        var rol = HttpContext.Items["userRol"]?.ToString();
+
+        if (rol != "administrador")
+            return Forbid(); // Bloquea acceso a clientes
+
+        var url = _config["Supabase:Url"];
+        var key = _config["Supabase:Key"];
+        var client = _httpClientFactory.CreateClient();
+
+        // Traer todas las consultas
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/consultas_agente?select=*");
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            return BadRequest(body);
+
+        var consultas = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body) ?? new();
+
+        // 1. Total de preguntas realizadas
+        var totalPreguntas = consultas.Count;
+
+        // 2. Preguntas frecuentes (Top 5)
+        var preguntasFrecuentes = consultas
+            .GroupBy(c => c["pregunta"].GetString())
+            .Select(g => new { pregunta = g.Key, frecuencia = g.Count() })
+            .OrderByDescending(x => x.frecuencia)
+            .Take(5)
+            .ToList();
+
+        // 3. Consultas exitosas
+        var consultasExitosas = consultas.Count(c => c["exito"].GetBoolean());
+
+        // 4. Consultas sin resultados relevantes
+        var consultasSinResultados = consultas.Count(c =>
+            (!c.ContainsKey("respuesta") || string.IsNullOrEmpty(c["respuesta"].GetString())) ||
+            (c.ContainsKey("similitud") && c["similitud"].GetDecimal() < 0.3M)
+        );
+
+        return Ok(new
+        {
+            total_preguntas = totalPreguntas,
+            preguntas_frecuentes = preguntasFrecuentes,
+            consultas_exitosas = consultasExitosas,
+            consultas_sin_resultados = consultasSinResultados
+        });
+    }
+
 }
