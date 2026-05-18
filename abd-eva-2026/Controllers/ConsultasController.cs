@@ -65,6 +65,7 @@ public class ConsultasController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+    // GET api/consultas/metricas — métricas de uso (solo admin)
     [HttpGet("metricas")]
     public async Task<IActionResult> GetMetricas()
     {
