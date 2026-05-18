@@ -73,23 +73,25 @@ public class BusquedaController : ControllerBase
 =======
             var url = _config["Supabase:Url"];
             var key = _config["Supabase:Key"];
-            var userId = HttpContext.Items["userId"]?.ToString();
 
             var client = _httpClientFactory.CreateClient();
 
             // 1. Generar embedding
             var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-            Console.WriteLine($"Embedding generado: {embedding.Length} para usuario: {userId}");
+            Console.WriteLine($"Embedding generado: {embedding.Length}");
 
+<<<<<<< HEAD
             // 2. Body CORRECTO incluyendo p_idusu para filtrar por usuario
 >>>>>>> parent of cd940a4 (Feature: El usuario solo puede consultar sobre sus apuntes)
+=======
+            // 2. Body CORRECTO
+>>>>>>> parent of 73f0bdf (Feature: El agente guarda sus consultas en la base de datos)
             var bodyObj = new
             {
                 query_embedding = embedding,
                 similitud_minima = similitudMinima,
-                cantidad_resultados = top,
-                p_idusu = userId
+                cantidad_resultados = top
             };
 
             var json = JsonSerializer.Serialize(bodyObj);
