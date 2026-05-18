@@ -39,16 +39,17 @@ public class RegistrosController : ControllerBase
             return BadRequest("El título del libro es obligatorio");
         }
 
-        if (string.IsNullOrEmpty(dto.tipo))
-        {
-            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: tipo de operación obligatorio");
-            return BadRequest("El tipo de operación es obligatorio");
-        }
 
         if (string.IsNullOrEmpty(dto.autor))
         {
             await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: autor obligatorio");
             return BadRequest("El autor es obligatorio");
+        }
+
+        if (string.IsNullOrEmpty(dto.tipo))
+        {
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: tipo de operación obligatorio");
+            return BadRequest("El tipo de operación es obligatorio");
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
