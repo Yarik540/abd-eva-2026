@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 namespace abd_eva_2026.Models
 {
     [Table("registros")]
+    //solucionar error;
     public class Registro : BaseModel
     {
         [PrimaryKey("idreg", false)]                                 
