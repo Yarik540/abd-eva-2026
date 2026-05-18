@@ -15,7 +15,7 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetDashboard()
+    public async Task<IActionResult> GetDashboardAPI()
     {
         var rol = HttpContext.Items["userRol"]?.ToString();
         var userId = HttpContext.Items["userId"]?.ToString();
