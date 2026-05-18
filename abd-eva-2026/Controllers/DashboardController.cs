@@ -13,6 +13,60 @@ public class DashboardController : ControllerBase
         _httpClientFactory = httpClientFactory;
         _config = config;
     }
+    [HttpGet("metricas")]
+    public async Task<IActionResult> ObtenerMetricas()
+    {
+        var rol = HttpContext.Items["userRol"]?.ToString();
+        var userId = HttpContext.Items["userId"]?.ToString();
+
+        if (rol != "administrador")
+        {
+            return Forbid();
+        }
+
+        var url = _config["Supabase:Url"];
+        var key = _config["Supabase:Key"];
+        var client = _httpClientFactory.CreateClient();
+
+        // 1. Total registros
+        var totalRegistros = await ContarRegistros(client, url, key);
+
+        // 2. Registros por usuario
+        var registrosPorUsuario = await GetRegistrosPorUsuario(client, url, key);
+
+        // 3. Latencia promedio
+        var latenciaPromedio = await GetLatenciaPromedio(client, url, key);
+
+        // 4. Total errores
+        var totalErrores = await ContarErrores(client, url, key);
+
+        // 5. Tasa de éxito
+        var tasaExito = await GetTasaExito(client, url, key);
+
+        // 6. Total consultas al agente
+        var totalConsultas = await ContarConsultasAgente(client, url, key);
+
+        // 7. Últimos registros
+        var ultimosRegistros = await GetUltimosRegistros(client, url, key);
+
+        // 8. Últimos errores
+        var ultimosErrores = await GetUltimosErrores(client, url, key);
+
+        return Ok(new
+        {
+            resumen = new
+            {
+                total_registros = totalRegistros,
+                total_errores = totalErrores,
+                tasa_exito = tasaExito,
+                total_consultas_agente = totalConsultas,
+                latencia_promedio_ms = latenciaPromedio
+            },
+            registros_por_usuario = registrosPorUsuario,
+            ultimos_registros = ultimosRegistros,
+            ultimos_errores = ultimosErrores
+        });
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetDashboard()
@@ -158,7 +212,7 @@ public class DashboardController : ControllerBase
         var body = await response.Content.ReadAsStringAsync();
         var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
         if (logs == null || logs.Count == 0) return 0;
-        return Math.Round(logs.Average(l => l["latencia_ms"].GetDouble()), 2);
+        return logs.Average(l => l["latencia_ms"].GetDouble());
     }
 
     // ── RENDIMIENTO VECTORIAL ──
