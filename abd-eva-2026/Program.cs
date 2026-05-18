@@ -19,19 +19,20 @@ await supabase.InitializeAsync();
 builder.Services.AddSingleton(supabase);
 builder.Services.AddScoped<EmbeddingService>();
 
-
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
+            "http://localhost:5678",
              "https://abd-bibl-frontend.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
     });
 });
+
 // Registrar controladores
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -94,8 +95,11 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton<abd.Middlewares.TokenBlacklist>();
 
 var app = builder.Build();
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
@@ -104,4 +108,5 @@ app.UseAuthorization();
 app.UseMiddleware<abd.Middlewares.AuthMiddleware>();
 app.MapControllers();
 
+Console.WriteLine("Servidor iniciado en http://localhost:5000");
 app.Run();
