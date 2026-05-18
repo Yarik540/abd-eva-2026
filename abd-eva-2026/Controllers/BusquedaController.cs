@@ -24,10 +24,10 @@ public class BusquedaController : ControllerBase
     // Método de tu amigo (simple, sin logs)
     [HttpGet]
     public async Task<IActionResult> BuscarSemantico(
-        [FromQuery] string texto,
-        [FromQuery] float similitudMinima = 0.5f,
-        [FromQuery] int top = 5,
-        [FromQuery] string? p_idusu = null)
+           [FromQuery] string texto,
+           [FromQuery] float similitudMinima = 0.25f,
+           [FromQuery] int top = 5,
+           [FromQuery] string? p_idusu = null)
     {
         if (string.IsNullOrWhiteSpace(texto))
             return BadRequest("Debe enviar un texto");
@@ -67,7 +67,8 @@ public class BusquedaController : ControllerBase
             if (!response.IsSuccessStatusCode)
                 return BadRequest(body);
 
-            var resultados = JsonSerializer.Deserialize<object>(body);
+            var resultados = JsonSerializer.Deserialize<List<object>>(body);
+            Console.WriteLine($"BÚSQUEDA: '{texto}' | Usuario: {userId} | Encontrados: {resultados?.Count ?? 0}");
 
             return Ok(new
             {
@@ -78,7 +79,10 @@ public class BusquedaController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return BadRequest(new
+            {
+                error = ex.Message
+            });
         }
     }
 
