@@ -21,6 +21,8 @@ namespace abd.Services
         {
             var apiKey = _config["OpenAI:ApiKey"];
             var model = _config["OpenAI:Model"];
+
+
             var client = _httpClientFactory.CreateClient();
 
             var requestBody = new { model = model, input = texto };

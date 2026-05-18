@@ -26,9 +26,10 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
-             "https://abd-bibl-frontend.vercel.app"
+            "http://localhost:5678",
+            "https://abd-bibl-frontend.vercel.app"
         )
-        .AllowAnyHeader()
+                .AllowAnyHeader()
         .AllowAnyMethod();
     });
 });
