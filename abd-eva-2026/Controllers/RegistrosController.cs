@@ -96,8 +96,9 @@ public class RegistrosController : ControllerBase
             var bodyObj = new
             {
                 query_embedding = embedding,
-                similitud_minima = 0.75f, // el más bajo de los umbrales
-                cantidad_resultados = 5
+                similitud_minima = 0.75f,
+                cantidad_resultados = 5,
+                p_idusu = userId   
             };
 
             var jsonBusqueda = JsonSerializer.Serialize(bodyObj);
@@ -107,9 +108,18 @@ public class RegistrosController : ControllerBase
             requestBusqueda.Content = new StringContent(jsonBusqueda, Encoding.UTF8, "application/json");
 
             var responseBusqueda = await client.SendAsync(requestBusqueda);
+
             var bodyBusqueda = await responseBusqueda.Content.ReadAsStringAsync();
             var similares = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyBusqueda);
 
+            if (responseBusqueda.IsSuccessStatusCode)
+            {
+                similares = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyBusqueda);
+            }
+            else
+            {
+                Console.WriteLine($"[SIMILITUD] RPC falló {(int)responseBusqueda.StatusCode}: {bodyBusqueda}");
+            }
             if (similares != null)
             {
                 similares = similares
