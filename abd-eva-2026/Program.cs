@@ -25,9 +25,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
-            "http://localhost:3000",
-            "http://localhost:5678",
-            "https://abd-bibl-frontend.vercel.app"
+            "http://localhost:3000", 
+            "http://localhost:5678", 
+            "https://abd-bibl-frontend.vercel.app",
+            "https://agente-n8n-biblioteca.onrender.com"
         )
                 .AllowAnyHeader()
         .AllowAnyMethod();
