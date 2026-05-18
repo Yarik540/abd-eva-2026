@@ -36,20 +36,22 @@ public class BusquedaController : ControllerBase
 
             var url = _config["Supabase:Url"];
             var key = _config["Supabase:Key"];
+            var userId = HttpContext.Items["userId"]?.ToString();
 
             var client = _httpClientFactory.CreateClient();
 
             // 1. Generar embedding
             var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-            Console.WriteLine($"Embedding generado: {embedding.Length}");
+            Console.WriteLine($"Embedding generado: {embedding.Length} para usuario: {userId}");
 
-            // 2. Body CORRECTO
+            // 2. Body CORRECTO incluyendo p_idusu para filtrar por usuario
             var bodyObj = new
             {
                 query_embedding = embedding,
                 similitud_minima = similitudMinima,
-                cantidad_resultados = top
+                cantidad_resultados = top,
+                p_idusu = userId
             };
 
             var json = JsonSerializer.Serialize(bodyObj);
