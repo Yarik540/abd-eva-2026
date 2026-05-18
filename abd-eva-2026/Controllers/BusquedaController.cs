@@ -24,7 +24,7 @@ public class BusquedaController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> BuscarSemantico(
         [FromQuery] string texto,
-        [FromQuery] float similitudMinima = 0.5f,
+        [FromQuery] float similitudMinima = 0.25f,
         [FromQuery] int top = 5,
         [FromQuery] string? p_idusu = null)
     {
@@ -34,23 +34,16 @@ public class BusquedaController : ControllerBase
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-
             var url = _config["Supabase:Url"];
             var key = _config["Supabase:Key"];
-            
-            // Priorizamos el p_idusu que viene de la query (n8n), si no, usamos el del Token
-            var userId = !string.IsNullOrEmpty(p_idusu) 
-                ? p_idusu 
+
+            var userId = !string.IsNullOrEmpty(p_idusu)
+                ? p_idusu
                 : HttpContext.Items["userId"]?.ToString();
 
             var client = _httpClientFactory.CreateClient();
-
-            // 1. Generar embedding
             var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-            Console.WriteLine($"Embedding generado para usuario: {userId}");
-
-            // 2. Body CORRECTO incluyendo p_idusu para filtrar por usuario
             var bodyObj = new
             {
                 query_embedding = embedding,
@@ -60,37 +53,21 @@ public class BusquedaController : ControllerBase
             };
 
             var json = JsonSerializer.Serialize(bodyObj);
-
-            Console.WriteLine("===== JSON ENVIADO =====");
-            Console.WriteLine(json);
-
-            // 4. Llamar función PostgreSQL
-            var request = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"{url}/rest/v1/rpc/buscar_registros_semanticos"
-            );
-
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/rest/v1/rpc/buscar_registros_semanticos");
             request.Headers.Add("apikey", key);
             request.Headers.Add("Authorization", $"Bearer {key}");
-
-            request.Content = new StringContent(
-                json,
-                Encoding.UTF8,
-                "application/json"
-            );
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await client.SendAsync(request);
-
             var body = await response.Content.ReadAsStringAsync();
 
-            Console.WriteLine(body);
+            sw.Stop();
 
             if (!response.IsSuccessStatusCode)
                 return BadRequest(body);
 
-            sw.Stop();
-
-            var resultados = JsonSerializer.Deserialize<object>(body);
+            var resultados = JsonSerializer.Deserialize<List<object>>(body);
+            Console.WriteLine($"BÚSQUEDA: '{texto}' | Usuario: {userId} | Encontrados: {resultados?.Count ?? 0}");
 
             return Ok(new
             {
