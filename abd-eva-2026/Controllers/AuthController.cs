@@ -64,7 +64,8 @@ public class AuthController : ControllerBase
             {
                 token = session.AccessToken,
                 usuario = session.User.Email,
-                rol = rol
+                rol = rol,
+                userId = session.User.Id.ToString()
             });
         }
         catch (Exception)
