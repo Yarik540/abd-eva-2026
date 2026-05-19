@@ -60,7 +60,8 @@ namespace abd.Services
             {
                 accion = "generar_embedding",
                 estado = "exito",
-                tiempo_embedding_ms = tiempoMs,
+                latencia_ms = tiempoMs, 
+                mensajelog = $"Embedding generado en {tiempoMs} ms",
                 fechalog = DateTime.UtcNow
             });
 

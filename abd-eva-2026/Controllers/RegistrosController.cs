@@ -91,7 +91,7 @@ public class RegistrosController : ControllerBase
             var textoParaEmbedding = $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
 
             // Generar embedding para comparación
-            var embedding = await _embeddingService.GenerarEmbeddingAsync(textoParaEmbedding);
+            var embedding = await _embeddingService.GenerarEmbeddingAsync(textoParaEmbedding,true);
 
             var bodyObj = new
             {

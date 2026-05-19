@@ -229,29 +229,6 @@ public class DashboardController : ControllerBase
         return Math.Round(logs.Average(l => l["latencia_ms"].GetDouble()), 2);
     }
 
-
-    private async Task<int> ContarConsultasExitosas(HttpClient client, string url, string key)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/consultas_agente?select=*&exito=eq.true");
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
-        return lista?.Count ?? 0;
-    }
-
-    private async Task<int> ContarConsultasSinResultado(HttpClient client, string url, string key)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/consultas_agente?select=*&exito=eq.false");
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        var lista = JsonSerializer.Deserialize<List<JsonElement>>(body);
-        return lista?.Count ?? 0;
-    }
-
     private async Task<int> ContarVectores(HttpClient client, string url, string key)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/registros_vectores?select=*");
@@ -266,7 +243,7 @@ public class DashboardController : ControllerBase
     private async Task<double> GetTiempoPromedioEmbeddings(HttpClient client, string url, string key)
     {
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{url}/rest/v1/logs?select=tiempo_embedding_ms&accion=eq.generar_embedding&estado=eq.exito");
+            $"{url}/rest/v1/logs?select=latencia_ms&accion=eq.generar_embedding&estado=eq.exito");
 
         request.Headers.Add("apikey", key);
         request.Headers.Add("Authorization", $"Bearer {key}");
@@ -277,8 +254,11 @@ public class DashboardController : ControllerBase
         var registros = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
         if (registros == null || registros.Count == 0) return 0;
 
-        return Math.Round(registros.Average(r => r["tiempo_embedding_ms"].GetDouble()), 2);
+        return Math.Round(registros
+            .Where(r => r.ContainsKey("latencia_ms") && r["latencia_ms"].ValueKind == JsonValueKind.Number)
+            .Average(r => r["latencia_ms"].GetDouble()), 2);
     }
+
 
 
     // ── ACTIVIDAD USUARIOS ──

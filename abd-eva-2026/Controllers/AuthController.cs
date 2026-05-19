@@ -1,5 +1,6 @@
 ﻿using abd_eva_2026.Models.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http;
 using System.Text;
@@ -217,6 +218,8 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<IActionResult> Logout([FromServices] abd.Middlewares.TokenBlacklist blacklist)
     {
+        var sw = Stopwatch.StartNew(); // ⏱ Inicia cronómetro
+
         var authorization = Request.Headers["Authorization"].ToString();
         string? userId = null;
         string? email = null;
@@ -233,7 +236,10 @@ public class AuthController : ControllerBase
             blacklist.Add(token);
         }
 
-        await GuardarLog(userId, "logout", "exito", 0, $"Logout exitoso: {email}");
+        sw.Stop(); // ⏱ Detiene cronómetro
+        var latencia = (int)sw.ElapsedMilliseconds;
+        await GuardarLog(userId, "logout", "exito", latencia, $"Logout exitoso: {email}");
         return Ok(new { message = "Sesión cerrada" });
     }
+
 }
