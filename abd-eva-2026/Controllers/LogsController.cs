@@ -13,7 +13,6 @@ public class LogsController : ControllerBase
         _httpClientFactory = httpClientFactory;
         _config = config;
     }
-
     [HttpGet]
     public async Task<IActionResult> GetLogs(
         [FromQuery] string? estado = null,
@@ -37,11 +36,45 @@ public class LogsController : ControllerBase
 
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-
         if (!response.IsSuccessStatusCode) return BadRequest(body);
 
-        return Ok(JsonSerializer.Deserialize<object>(body));
+        var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+
+        // --- Obtener usuarios desde la vista pública ---
+        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/usuarios?select=id,nombre,email");
+        requestUsers.Headers.Add("apikey", key);
+        requestUsers.Headers.Add("Authorization", $"Bearer {key}");
+
+        var responseUsers = await client.SendAsync(requestUsers);
+        var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
+        if (!responseUsers.IsSuccessStatusCode) return BadRequest(bodyUsers);
+
+        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+        var dicUsuarios = usuarios?.ToDictionary(
+            u => u["id"].GetString(),
+            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
+                ? u["nombre"].GetString()
+                : u["email"].GetString()
+        );
+
+        // --- Mapear logs con nombre ---
+        var resultado = logs?.Select(l => new
+        {
+            idlog = l.ContainsKey("idlog") ? l["idlog"].GetInt32() : 0,
+            accion = l.ContainsKey("accion") ? l["accion"].GetString() : null,
+            estado = l.ContainsKey("estado") ? l["estado"].GetString() : null,
+            mensajelog = l.ContainsKey("mensajelog") ? l["mensajelog"].GetString() : null,
+            fechalog = l.ContainsKey("fechalog") ? l["fechalog"].GetDateTime() : (DateTime?)null,
+            latencia_ms = l.ContainsKey("latencia_ms") ? l["latencia_ms"].GetInt32() : 0,
+            nombre = l.ContainsKey("idusu") && dicUsuarios != null && dicUsuarios.ContainsKey(l["idusu"].GetString())
+                ? dicUsuarios[l["idusu"].GetString()]
+                : "desconocido"
+        }).ToList();
+
+        return Ok(resultado);
     }
+
 
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()
