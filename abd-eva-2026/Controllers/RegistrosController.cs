@@ -168,8 +168,7 @@ public class RegistrosController : ControllerBase
 
     private async Task GuardarEmbedding(HttpClient client, string url, string key, int idreg, string texto)
     {
-        var embedding = await _embeddingService.GenerarEmbeddingAsync(texto, true);
-
+        var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
         var jsonObj = new
         {
             idreg = idreg,
