@@ -135,20 +135,21 @@ public class RegistrosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> ObtenerRegistros()
+    public async Task<IActionResult> ObtenerRegistros([FromQuery] string? p_idusu)
     {
         var userId = HttpContext.Items["userId"]?.ToString();
         var rol = HttpContext.Items["userRol"]?.ToString();
 
+        // Si viene p_idusu de n8n o similar, lo priorizamos
+        var finalUserId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : userId;
+
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
-
         var client = _httpClientFactory.CreateClient();
 
-        // Admin ve todos, cliente solo los suyos
-        var query = rol == "administrador"
+        var query = rol == "administrador" && string.IsNullOrEmpty(p_idusu)
             ? $"{url}/rest/v1/registros?select=*&order=idreg.desc"
-            : $"{url}/rest/v1/registros?select=*&idusu=eq.{userId}&order=idreg.desc";
+            : $"{url}/rest/v1/registros?select=*&idusu=eq.{finalUserId}&order=idreg.desc";
 
         var request = new HttpRequestMessage(HttpMethod.Get, query);
         request.Headers.Add("apikey", key);
@@ -161,5 +162,30 @@ public class RegistrosController : ControllerBase
             return BadRequest(body);
 
         return Ok(JsonSerializer.Deserialize<object>(body));
+    }
+
+    [HttpGet("conteo")]
+    public async Task<IActionResult> ObtenerConteo([FromQuery] string? p_idusu)
+    {
+        var userId = HttpContext.Items["userId"]?.ToString();
+        var finalUserId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : userId;
+
+        var url = _config["Supabase:Url"];
+        var key = _config["Supabase:Key"];
+        var client = _httpClientFactory.CreateClient();
+
+        var query = $"{url}/rest/v1/registros?select=idreg&idusu=eq.{finalUserId}";
+        var request = new HttpRequestMessage(HttpMethod.Get, query);
+        request.Headers.Add("apikey", key);
+        request.Headers.Add("Authorization", $"Bearer {key}");
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            return BadRequest(body);
+
+        var lista = JsonSerializer.Deserialize<List<object>>(body);
+        return Ok(new { total_registros = lista?.Count ?? 0 });
     }
 }
