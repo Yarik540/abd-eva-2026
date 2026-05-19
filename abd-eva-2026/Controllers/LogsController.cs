@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using abd_eva_2026.Models.DTOs;
+using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
 [ApiController]
@@ -19,145 +20,239 @@ public class LogsController : ControllerBase
         [FromQuery] string? accion = null,
         [FromQuery] int limit = 50)
     {
+        Console.WriteLine("===== LOGS =====");
+
+        var auth = Request.Headers["Authorization"].ToString();
+        Console.WriteLine($"Authorization: {auth}");
+
+        var userId = HttpContext.Items["userId"]?.ToString();
         var rol = HttpContext.Items["userRol"]?.ToString();
-        if (rol != "administrador") return Forbid();
+
+        Console.WriteLine($"UserId: {userId}");
+        Console.WriteLine($"Rol: {rol}");
+
+        if (rol != "administrador")
+            return Forbid();
 
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
+
         var client = _httpClientFactory.CreateClient();
 
+        // ==========================
+        // Obtener logs
+        // ==========================
+
         var query = $"{url}/rest/v1/logs?select=*&order=fechalog.desc&limit={limit}";
-        if (!string.IsNullOrEmpty(estado)) query += $"&estado=eq.{estado}";
-        if (!string.IsNullOrEmpty(accion)) query += $"&accion=eq.{accion}";
 
-        var request = new HttpRequestMessage(HttpMethod.Get, query);
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
+        if (!string.IsNullOrWhiteSpace(estado))
+            query += $"&estado=eq.{estado}";
 
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode) return BadRequest(body);
+        if (!string.IsNullOrWhiteSpace(accion))
+            query += $"&accion=eq.{accion}";
 
-        var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+        var requestLogs = new HttpRequestMessage(HttpMethod.Get, query);
 
-        // --- Obtener usuarios desde la vista pública ---
-        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+        requestLogs.Headers.Add("apikey", key);
+        requestLogs.Headers.Add("Authorization", $"Bearer {key}");
+
+        var responseLogs = await client.SendAsync(requestLogs);
+        var bodyLogs = await responseLogs.Content.ReadAsStringAsync();
+
+        if (!responseLogs.IsSuccessStatusCode)
+            return BadRequest(bodyLogs);
+
+        var logs = JsonSerializer.Deserialize<List<LogDTO>>(
+            bodyLogs,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<LogDTO>();
+
+        // ==========================
+        // Obtener usuarios
+        // ==========================
+
+        var requestUsers = new HttpRequestMessage(
+            HttpMethod.Get,
             $"{url}/rest/v1/usuarios?select=id,nombre,email");
+
         requestUsers.Headers.Add("apikey", key);
         requestUsers.Headers.Add("Authorization", $"Bearer {key}");
 
         var responseUsers = await client.SendAsync(requestUsers);
         var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
-        if (!responseUsers.IsSuccessStatusCode) return BadRequest(bodyUsers);
 
-        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
-        var dicUsuarios = usuarios?.ToDictionary(
-            u => u["id"].GetString(),
-            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
-                ? u["nombre"].GetString()
-                : u["email"].GetString()
-        );
+        if (!responseUsers.IsSuccessStatusCode)
+            return BadRequest(bodyUsers);
 
-        // --- Mapear logs con nombre ---
-        var resultado = logs?.Select(l => new
+        var usuarios = JsonSerializer.Deserialize<List<UsuarioDTO>>(
+            bodyUsers,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<UsuarioDTO>();
+
+        var dicUsuarios = usuarios
+            .Where(u => !string.IsNullOrEmpty(u.id))
+            .ToDictionary(
+                u => u.id!,
+                u => !string.IsNullOrWhiteSpace(u.nombre)
+                    ? u.nombre!
+                    : u.email ?? "desconocido"
+            );
+
+        // ==========================
+        // Combinar logs + usuarios
+        // ==========================
+
+        var resultado = logs.Select(l => new
         {
-            idlog = l.ContainsKey("idlog") ? l["idlog"].GetInt32() : 0,
-            accion = l.ContainsKey("accion") ? l["accion"].GetString() : null,
-            estado = l.ContainsKey("estado") ? l["estado"].GetString() : null,
-            mensajelog = l.ContainsKey("mensajelog") ? l["mensajelog"].GetString() : null,
-            fechalog = l.ContainsKey("fechalog") ? l["fechalog"].GetDateTime() : (DateTime?)null,
-            latencia_ms = l.ContainsKey("latencia_ms") ? l["latencia_ms"].GetInt32() : 0,
-            nombre = l.ContainsKey("idusu") && dicUsuarios != null && dicUsuarios.ContainsKey(l["idusu"].GetString())
-                ? dicUsuarios[l["idusu"].GetString()]
-                : "desconocido"
-        }).ToList();
+            idlog = l.idlog,
+            accion = l.accion,
+            estado = l.estado,
+            mensajelog = l.mensajelog,
+            fechalog = l.fechalog,
+            latencia_ms = l.latencia_ms ?? 0,
+            idusu = l.idusu,
+
+            nombre =
+                !string.IsNullOrEmpty(l.idusu) &&
+                dicUsuarios.TryGetValue(l.idusu, out var nombreUsuario)
+                    ? nombreUsuario
+                    : "desconocido"
+        });
 
         return Ok(resultado);
     }
-
-
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()
     {
         var rol = HttpContext.Items["userRol"]?.ToString();
-        if (rol != "administrador") return Forbid();
+
+        if (rol != "administrador")
+            return Forbid();
 
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
+
         var client = _httpClientFactory.CreateClient();
 
-        // --- Obtener logs ---
-        var request = new HttpRequestMessage(HttpMethod.Get,
+        // ==========================
+        // Obtener logs
+        // ==========================
+
+        var requestLogs = new HttpRequestMessage(
+            HttpMethod.Get,
             $"{url}/rest/v1/logs?select=estado,accion,latencia_ms,idusu");
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
 
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
+        requestLogs.Headers.Add("apikey", key);
+        requestLogs.Headers.Add("Authorization", $"Bearer {key}");
 
-        if (!response.IsSuccessStatusCode) return BadRequest(body);
+        var responseLogs = await client.SendAsync(requestLogs);
+        var bodyLogs = await responseLogs.Content.ReadAsStringAsync();
 
-        var logs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+        if (!responseLogs.IsSuccessStatusCode)
+            return BadRequest(bodyLogs);
 
-        if (logs == null || logs.Count == 0)
-            return Ok(new { mensaje = "Sin logs registrados" });
+        var logs = JsonSerializer.Deserialize<List<LogDTO>>(
+            bodyLogs,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<LogDTO>();
 
-        // --- Obtener usuarios desde la vista pública ---
-        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
-            $"{url}/rest/v1/usuarios?select=id,email,nombre,rol");
+        if (logs.Count == 0)
+        {
+            return Ok(new
+            {
+                total_logs = 0,
+                total_exitosos = 0,
+                total_errores = 0,
+                por_accion = new List<object>(),
+                errores_por_usuario = new List<object>()
+            });
+        }
+
+        // ==========================
+        // Obtener usuarios
+        // ==========================
+
+        var requestUsers = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{url}/rest/v1/usuarios?select=id,nombre,email,rol");
+
         requestUsers.Headers.Add("apikey", key);
         requestUsers.Headers.Add("Authorization", $"Bearer {key}");
 
         var responseUsers = await client.SendAsync(requestUsers);
         var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
 
-        if (!responseUsers.IsSuccessStatusCode) return BadRequest(bodyUsers);
+        if (!responseUsers.IsSuccessStatusCode)
+            return BadRequest(bodyUsers);
 
-        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+        var usuarios = JsonSerializer.Deserialize<List<UsuarioDTO>>(
+            bodyUsers,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<UsuarioDTO>();
 
-        var dicUsuarios = usuarios?.ToDictionary(
-            u => u["id"].GetString(),
-            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
-                ? u["nombre"].GetString()
-                : u["email"].GetString()
-        );
+        var dicUsuarios = usuarios
+            .Where(u => !string.IsNullOrEmpty(u.id))
+            .ToDictionary(
+                u => u.id!,
+                u => !string.IsNullOrWhiteSpace(u.nombre)
+                    ? u.nombre!
+                    : u.email ?? "desconocido"
+            );
 
-        // --- Agrupar por acción ---
+        // ==========================
+        // Resumen por acción
+        // ==========================
+
         var porAccion = logs
-            .GroupBy(l => l.ContainsKey("accion") && l["accion"].ValueKind != JsonValueKind.Null
-                ? l["accion"].GetString()
-                : "desconocido")
+            .GroupBy(x => x.accion ?? "desconocido")
             .Select(g => new
             {
                 accion = g.Key,
                 total = g.Count(),
-                exitosos = g.Count(l => l.ContainsKey("estado") && l["estado"].GetString() == "exito"),
-                errores = g.Count(l => l.ContainsKey("estado") && l["estado"].GetString() == "error"),
-                latencia_promedio_ms = Math.Round(g.Average(l =>
-                    l.ContainsKey("latencia_ms") && l["latencia_ms"].ValueKind != JsonValueKind.Null
-                        ? l["latencia_ms"].GetDouble()
-                        : 0), 2)
-            }).ToList();
+                exitosos = g.Count(x => x.estado == "exito"),
+                errores = g.Count(x => x.estado == "error"),
+                latencia_promedio_ms = Math.Round(
+                    g.Average(x => (double)(x.latencia_ms ?? 0)),
+                    2
+                )
+            })
+            .ToList();
 
-        // --- Errores por usuario con nombre ---
+        // ==========================
+        // Errores por usuario
+        // ==========================
+
         var erroresPorUsuario = logs
-            .Where(l => l.ContainsKey("estado") && l["estado"].GetString() == "error")
-            .GroupBy(l => l.ContainsKey("idusu") && l["idusu"].ValueKind != JsonValueKind.Null
-                ? l["idusu"].GetString()
-                : "desconocido")
+            .Where(x => x.estado == "error")
+            .GroupBy(x => x.idusu ?? "desconocido")
             .Select(g => new
             {
                 idusu = g.Key,
-                nombre = dicUsuarios != null && dicUsuarios.ContainsKey(g.Key) ? dicUsuarios[g.Key] : "desconocido",
+                nombre =
+                    dicUsuarios.TryGetValue(g.Key, out var nombreUsuario)
+                        ? nombreUsuario
+                        : "desconocido",
                 total_errores = g.Count()
-            }).ToList();
+            })
+            .ToList();
 
-        // --- Respuesta final ---
+        // ==========================
+        // Respuesta final
+        // ==========================
+
         return Ok(new
         {
             total_logs = logs.Count,
-            total_exitosos = logs.Count(l => l.ContainsKey("estado") && l["estado"].GetString() == "exito"),
-            total_errores = logs.Count(l => l.ContainsKey("estado") && l["estado"].GetString() == "error"),
+            total_exitosos = logs.Count(x => x.estado == "exito"),
+            total_errores = logs.Count(x => x.estado == "error"),
             por_accion = porAccion,
             errores_por_usuario = erroresPorUsuario
         });
