@@ -155,7 +155,6 @@ public class RegistrosController : ControllerBase
             sw.Restart();
             await GuardarEmbedding(client, url, key, idreg, textoParaEmbedding);
             sw.Stop();
-            await GuardarLog(client, url, key, userId, "guardar_embedding", "exito", (int)sw.ElapsedMilliseconds, "Embedding guardado correctamente");
         }
         // --- FIN BLOQUE DE SIMILITUD ---
 
