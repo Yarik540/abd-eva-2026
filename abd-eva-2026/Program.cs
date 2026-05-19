@@ -100,10 +100,10 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors("AllowFrontend");
+
+app.UseMiddleware<abd.Middlewares.AuthMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseMiddleware<abd.Middlewares.AuthMiddleware>();
 app.MapControllers();
-
 app.Run();
