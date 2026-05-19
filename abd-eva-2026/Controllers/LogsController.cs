@@ -53,6 +53,7 @@ public class LogsController : ControllerBase
         var key = _config["Supabase:Key"];
         var client = _httpClientFactory.CreateClient();
 
+        // --- Obtener logs ---
         var request = new HttpRequestMessage(HttpMethod.Get,
             $"{url}/rest/v1/logs?select=estado,accion,latencia_ms,idusu");
         request.Headers.Add("apikey", key);
@@ -68,6 +69,27 @@ public class LogsController : ControllerBase
         if (logs == null || logs.Count == 0)
             return Ok(new { mensaje = "Sin logs registrados" });
 
+        // --- Obtener usuarios desde la vista pública ---
+        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/usuarios?select=id,email,nombre,rol");
+        requestUsers.Headers.Add("apikey", key);
+        requestUsers.Headers.Add("Authorization", $"Bearer {key}");
+
+        var responseUsers = await client.SendAsync(requestUsers);
+        var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
+
+        if (!responseUsers.IsSuccessStatusCode) return BadRequest(bodyUsers);
+
+        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+
+        var dicUsuarios = usuarios?.ToDictionary(
+            u => u["id"].GetString(),
+            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
+                ? u["nombre"].GetString()
+                : u["email"].GetString()
+        );
+
+        // --- Agrupar por acción ---
         var porAccion = logs
             .GroupBy(l => l.ContainsKey("accion") && l["accion"].ValueKind != JsonValueKind.Null
                 ? l["accion"].GetString()
@@ -84,6 +106,7 @@ public class LogsController : ControllerBase
                         : 0), 2)
             }).ToList();
 
+        // --- Errores por usuario con nombre ---
         var erroresPorUsuario = logs
             .Where(l => l.ContainsKey("estado") && l["estado"].GetString() == "error")
             .GroupBy(l => l.ContainsKey("idusu") && l["idusu"].ValueKind != JsonValueKind.Null
@@ -92,9 +115,11 @@ public class LogsController : ControllerBase
             .Select(g => new
             {
                 idusu = g.Key,
+                nombre = dicUsuarios != null && dicUsuarios.ContainsKey(g.Key) ? dicUsuarios[g.Key] : "desconocido",
                 total_errores = g.Count()
             }).ToList();
 
+        // --- Respuesta final ---
         return Ok(new
         {
             total_logs = logs.Count,
@@ -104,6 +129,7 @@ public class LogsController : ControllerBase
             errores_por_usuario = erroresPorUsuario
         });
     }
+
 
     [HttpGet("usuario/{idusu}")]
     public async Task<IActionResult> GetLogsPorUsuario(string idusu, [FromQuery] int limit = 20)

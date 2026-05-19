@@ -1,6 +1,7 @@
 ﻿using abd.Services;
 using abd_eva_2026.Models.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using static System.Runtime.InteropServices.JavaScript.JSType;
@@ -32,28 +33,32 @@ public class RegistrosController : ControllerBase
         var key = _config["Supabase:Key"];
         var client = _httpClientFactory.CreateClient();
 
-        // Validaciones con log
+        var sw = Stopwatch.StartNew();
+
+        // --- VALIDACIONES ---
         if (string.IsNullOrEmpty(dto.titulolibro))
         {
-            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: título del libro obligatorio");
+            sw.Stop();
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", (int)sw.ElapsedMilliseconds, "Validación fallida: título del libro obligatorio");
             return BadRequest("El título del libro es obligatorio");
         }
 
-
         if (string.IsNullOrEmpty(dto.autor))
         {
-            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: autor obligatorio");
+            sw.Stop();
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", (int)sw.ElapsedMilliseconds, "Validación fallida: autor obligatorio");
             return BadRequest("El autor es obligatorio");
         }
 
         if (string.IsNullOrEmpty(dto.tipo))
         {
-            await GuardarLog(client, url, key, userId, "insertar_registro", "error", 0, "Validación fallida: tipo de operación obligatorio");
+            sw.Stop();
+            await GuardarLog(client, url, key, userId, "insertar_registro", "error", (int)sw.ElapsedMilliseconds, "Validación fallida: tipo de operación obligatorio");
             return BadRequest("El tipo de operación es obligatorio");
         }
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
+        // --- INSERCIÓN ---
+        sw.Restart();
         var json = JsonSerializer.Serialize(new
         {
             contenidoreg = dto.contenidoreg,
@@ -90,15 +95,20 @@ public class RegistrosController : ControllerBase
             var idreg = nuevo["idreg"].GetInt32();
             var textoParaEmbedding = $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
 
-            // Generar embedding para comparación
-            var embedding = await _embeddingService.GenerarEmbeddingAsync(textoParaEmbedding,true);
+            // Generar embedding
+            sw.Restart();
+            var embedding = await _embeddingService.GenerarEmbeddingAsync(textoParaEmbedding);
+            sw.Stop();
+            await GuardarLog(client, url, key, userId, "generar_embedding", "exito", (int)sw.ElapsedMilliseconds, "Embedding generado");
 
+            // Búsqueda semántica
+            sw.Restart();
             var bodyObj = new
             {
                 query_embedding = embedding,
                 similitud_minima = 0.75f,
                 cantidad_resultados = 5,
-                p_idusu = userId   
+                p_idusu = userId
             };
 
             var jsonBusqueda = JsonSerializer.Serialize(bodyObj);
@@ -108,19 +118,12 @@ public class RegistrosController : ControllerBase
             requestBusqueda.Content = new StringContent(jsonBusqueda, Encoding.UTF8, "application/json");
 
             var responseBusqueda = await client.SendAsync(requestBusqueda);
+            sw.Stop();
 
             var bodyBusqueda = await responseBusqueda.Content.ReadAsStringAsync();
             var similares = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyBusqueda);
 
-            if (responseBusqueda.IsSuccessStatusCode)
-            {
-                similares = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyBusqueda);
-            }
-            else
-            {
-                Console.WriteLine($"[SIMILITUD] RPC falló {(int)responseBusqueda.StatusCode}: {bodyBusqueda}");
-            }
-            if (similares != null)
+            if (responseBusqueda.IsSuccessStatusCode && similares != null)
             {
                 similares = similares
                     .Where(r => r["idreg"].GetInt32() != idreg)
@@ -132,41 +135,27 @@ public class RegistrosController : ControllerBase
 
                     if (maxSimilitud >= 0.95)
                     {
-                        await GuardarLog(client, url, key, userId,
-                            "registro_duplicado",
-                            "detectado",
-                            (int)sw.ElapsedMilliseconds,
-                            $"Duplicado exacto detectado con similitud {maxSimilitud}");
+                        await GuardarLog(client, url, key, userId, "registro_duplicado", "detectado", (int)sw.ElapsedMilliseconds, $"Duplicado exacto detectado con similitud {maxSimilitud}");
                     }
                     else if (maxSimilitud >= 0.85)
                     {
-                        await GuardarLog(client, url, key, userId,
-                            "registro_similar_alto",
-                            "detectado",
-                            (int)sw.ElapsedMilliseconds,
-                            $"Registro muy similar detectado con similitud {maxSimilitud}");
+                        await GuardarLog(client, url, key, userId, "registro_similar_alto", "detectado", (int)sw.ElapsedMilliseconds, $"Registro muy similar detectado con similitud {maxSimilitud}");
                     }
                     else if (maxSimilitud >= 0.75)
                     {
-                        await GuardarLog(client, url, key, userId,
-                            "registro_similar_medio",
-                            "detectado",
-                            (int)sw.ElapsedMilliseconds,
-                            $"Registro algo similar detectado con similitud {maxSimilitud}");
+                        await GuardarLog(client, url, key, userId, "registro_similar_medio", "detectado", (int)sw.ElapsedMilliseconds, $"Registro algo similar detectado con similitud {maxSimilitud}");
                     }
+
                     var promedioSimilitud = similares.Average(r => r["similitud"].GetDouble());
-
-                    await GuardarLog(client, url, key, userId,
-                        "busqueda_semantica",
-                        "exito",
-                        (int)sw.ElapsedMilliseconds,
-                        $"Promedio de similitud: {promedioSimilitud:F2}");
+                    await GuardarLog(client, url, key, userId, "busqueda_semantica", "exito", (int)sw.ElapsedMilliseconds, $"Promedio de similitud: {promedioSimilitud:F2}");
                 }
-
             }
 
             // Guardar embedding en registros_vectores
+            sw.Restart();
             await GuardarEmbedding(client, url, key, idreg, textoParaEmbedding);
+            sw.Stop();
+            await GuardarLog(client, url, key, userId, "guardar_embedding", "exito", (int)sw.ElapsedMilliseconds, "Embedding guardado correctamente");
         }
         // --- FIN BLOQUE DE SIMILITUD ---
 

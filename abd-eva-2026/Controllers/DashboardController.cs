@@ -263,41 +263,168 @@ public class DashboardController : ControllerBase
 
     // ── ACTIVIDAD USUARIOS ──
 
-    private async Task<object> GetRegistrosPorUsuario(HttpClient client, string url, string key)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/registros?select=idusu&order=idusu");
-        request.Headers.Add("apikey", key);
-        request.Headers.Add("Authorization", $"Bearer {key}");
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        var registros = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
-        return registros?
-            .GroupBy(r => r["idusu"].GetString())
-            .Select(g => new { idusu = g.Key, total = g.Count() })
-            .ToList() ?? new();
-    }
+private async Task<object> GetRegistrosPorUsuario(HttpClient client, string url, string key)
+{
+    // --- Obtener registros ---
+    var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/registros?select=idusu&order=idusu");
+    request.Headers.Add("apikey", key);
+    request.Headers.Add("Authorization", $"Bearer {key}");
+    var response = await client.SendAsync(request);
+    var body = await response.Content.ReadAsStringAsync();
+    var registros = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+
+    if (registros == null || registros.Count == 0)
+        return new { mensaje = "Sin registros" };
+
+    // --- Obtener usuarios desde la vista pública ---
+    var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+        $"{url}/rest/v1/usuarios?select=id,nombre,email");
+    requestUsers.Headers.Add("apikey", key);
+    requestUsers.Headers.Add("Authorization", $"Bearer {key}");
+
+    var responseUsers = await client.SendAsync(requestUsers);
+    var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
+
+    if (!responseUsers.IsSuccessStatusCode) return new { error = bodyUsers };
+
+    var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+
+    var dicUsuarios = usuarios?.ToDictionary(
+        u => u["id"].GetString(),
+        u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
+            ? u["nombre"].GetString()
+            : u["email"].GetString()
+    );
+
+    // --- Agrupar registros por usuario con nombre ---
+    var resultado = registros
+        .GroupBy(r => r["idusu"].GetString())
+        .Select(g => new
+        {
+            idusu = g.Key,
+            nombre = dicUsuarios != null && dicUsuarios.ContainsKey(g.Key) ? dicUsuarios[g.Key] : "desconocido",
+            total = g.Count()
+        })
+        .ToList();
+
+    return resultado;
+}
+
 
     private async Task<object> GetUltimosRegistros(HttpClient client, string url, string key)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/registros?select=*&order=fechareg.desc&limit=5");
+        // --- Obtener últimos registros ---
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/registros?select=*&order=fechareg.desc&limit=5");
         request.Headers.Add("apikey", key);
         request.Headers.Add("Authorization", $"Bearer {key}");
+
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<object>(body) ?? new();
+
+        if (!response.IsSuccessStatusCode) return new { error = body };
+
+        var registros = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+
+        if (registros == null || registros.Count == 0)
+            return new { mensaje = "Sin registros" };
+
+        // --- Obtener usuarios desde la vista pública ---
+        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/usuarios?select=id,nombre,email");
+        requestUsers.Headers.Add("apikey", key);
+        requestUsers.Headers.Add("Authorization", $"Bearer {key}");
+
+        var responseUsers = await client.SendAsync(requestUsers);
+        var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
+
+        if (!responseUsers.IsSuccessStatusCode) return new { error = bodyUsers };
+
+        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+
+        var dicUsuarios = usuarios?.ToDictionary(
+            u => u["id"].GetString(),
+            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
+                ? u["nombre"].GetString()
+                : u["email"].GetString()
+        );
+
+        // --- Mapear registros con nombre en lugar de idusu ---
+        var resultado = registros.Select(r => new
+        {
+            idreg = r.ContainsKey("idreg") ? r["idreg"].GetInt32() : 0,
+            contenidoreg = r.ContainsKey("contenidoreg") ? r["contenidoreg"].GetString() : null,
+            titulolibro = r.ContainsKey("titulolibro") ? r["titulolibro"].GetString() : null,
+            autor = r.ContainsKey("autor") ? r["autor"].GetString() : null,
+            tipo = r.ContainsKey("tipo") ? r["tipo"].GetString() : null,
+            fechareg = r.ContainsKey("fechareg") ? r["fechareg"].GetDateTime() : (DateTime?)null,
+            nombre = r.ContainsKey("idusu") && dicUsuarios != null && dicUsuarios.ContainsKey(r["idusu"].GetString())
+                ? dicUsuarios[r["idusu"].GetString()]
+                : "desconocido"
+        }).ToList();
+
+        return resultado;
     }
+
+
 
     // ── CALIDAD DE DATOS ──
 
     private async Task<object> GetUltimosErrores(HttpClient client, string url, string key)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/rest/v1/logs?select=*&estado=eq.error&order=fechalog.desc&limit=5");
+        // --- Obtener últimos errores ---
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/logs?select=*&estado=eq.error&order=fechalog.desc&limit=5");
         request.Headers.Add("apikey", key);
         request.Headers.Add("Authorization", $"Bearer {key}");
+
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<object>(body) ?? new();
+
+        if (!response.IsSuccessStatusCode) return new { error = body };
+
+        var errores = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(body);
+
+        if (errores == null || errores.Count == 0)
+            return new { mensaje = "Sin errores registrados" };
+
+        // --- Obtener usuarios desde la vista pública ---
+        var requestUsers = new HttpRequestMessage(HttpMethod.Get,
+            $"{url}/rest/v1/usuarios?select=id,nombre,email");
+        requestUsers.Headers.Add("apikey", key);
+        requestUsers.Headers.Add("Authorization", $"Bearer {key}");
+
+        var responseUsers = await client.SendAsync(requestUsers);
+        var bodyUsers = await responseUsers.Content.ReadAsStringAsync();
+
+        if (!responseUsers.IsSuccessStatusCode) return new { error = bodyUsers };
+
+        var usuarios = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(bodyUsers);
+
+        var dicUsuarios = usuarios?.ToDictionary(
+            u => u["id"].GetString(),
+            u => u.ContainsKey("nombre") && u["nombre"].ValueKind != JsonValueKind.Null
+                ? u["nombre"].GetString()
+                : u["email"].GetString()
+        );
+
+        // --- Mapear errores con nombre ---
+        var resultado = errores.Select(e => new
+        {
+            idlog = e.ContainsKey("idlog") ? e["idlog"].GetInt32() : 0,
+            accion = e.ContainsKey("accion") ? e["accion"].GetString() : null,
+            estado = e.ContainsKey("estado") ? e["estado"].GetString() : null,
+            latencia_ms = e.ContainsKey("latencia_ms") ? e["latencia_ms"].GetInt32() : 0,
+            mensajelog = e.ContainsKey("mensajelog") ? e["mensajelog"].GetString() : null,
+            fechalog = e.ContainsKey("fechalog") ? e["fechalog"].GetDateTime() : (DateTime?)null,
+            nombre = e.ContainsKey("idusu") && dicUsuarios != null && dicUsuarios.ContainsKey(e["idusu"].GetString())
+                ? dicUsuarios[e["idusu"].GetString()]
+                : "desconocido"
+        }).ToList();
+
+        return resultado;
     }
+
     private async Task<int> ContarRegistrosIncompletos(HttpClient client, string url, string key)
     {
         var request = new HttpRequestMessage(HttpMethod.Get,
