@@ -15,16 +15,13 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetDashboard()
+    public async Task<IActionResult> ObtenerMetricas()
     {
         var rol = HttpContext.Items["userRol"]?.ToString();
         var userId = HttpContext.Items["userId"]?.ToString();
 
-        Console.WriteLine($"DASHBOARD - rol: {rol} | userId: {userId}");
-
         if (rol != "administrador")
         {
-            Console.WriteLine($"DASHBOARD - Forbid porque rol es: '{rol}'");
             return Forbid();
         }
 

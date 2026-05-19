@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 
 namespace abd.Services
@@ -20,55 +20,36 @@ namespace abd.Services
         {
             try
             {
-                var apiKey = _config["HuggingFace:ApiKey"];
-                var model = _config["HuggingFace:Model"];
+                var apiKey = _config["OpenAI:ApiKey"];
+                var model = _config["OpenAI:Model"];
 
                 var client = _httpClientFactory.CreateClient();
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    inputs = $"Represent this sentence for searching relevant passages: {texto}"
-                });
+                var requestBody = new { model = model, input = texto };
 
-                var request = new HttpRequestMessage(
-                    HttpMethod.Post,
-                    $"https://router.huggingface.co/hf-inference/models/{model}"
-                );
-
+                var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/embeddings");
                 request.Headers.Add("Authorization", $"Bearer {apiKey}");
+                request.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
-                request.Content = new StringContent(
-                    json,
-                    Encoding.UTF8,
-                    "application/json"
-                );
-
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var response = await client.SendAsync(request);
-
                 var body = await response.Content.ReadAsStringAsync();
-
-                Console.WriteLine("===== HUGGINGFACE RESPONSE =====");
-                Console.WriteLine(body.Substring(0, Math.Min(300, body.Length)));
+                sw.Stop();
 
                 if (!response.IsSuccessStatusCode)
-                {
                     throw new Exception(body);
-                }
 
-                var embedding = JsonSerializer.Deserialize<float[]>(body);
+                using var doc = JsonDocument.Parse(body);
+                var embedding = doc.RootElement.GetProperty("data")[0].GetProperty("embedding")
+                    .EnumerateArray().Select(x => (float)x.GetDouble()).ToArray();
 
-                if (embedding == null || embedding.Length == 0)
-                {
-                    throw new Exception("Embedding vacío");
-                }
-
-                Console.WriteLine($"Embedding generado: {embedding.Length} dimensiones");
+                Console.WriteLine($"Embedding generado exitosamente con OpenAI ({embedding.Length} dimensiones)");
 
                 return embedding;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR EMBEDDING: {ex.Message}");
+                Console.WriteLine($"ERROR EMBEDDING OPENAI: {ex.Message}");
                 throw;
             }
         }

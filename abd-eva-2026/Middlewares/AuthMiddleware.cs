@@ -61,9 +61,15 @@ namespace abd.Middlewares
 
                 // Extraer user_metadata como JSON
                 var userMetadataRaw = jwt.Claims.FirstOrDefault(c => c.Type == "user_metadata")?.Value;
+                var roleClaim = jwt.Claims.FirstOrDefault(c => c.Type == "role")?.Value;
                 var rol = "cliente";
 
-                if (!string.IsNullOrEmpty(userMetadataRaw))
+                // Si es un service_role de Supabase, le damos permisos de admin
+                if (roleClaim == "service_role")
+                {
+                    rol = "administrador";
+                }
+                else if (!string.IsNullOrEmpty(userMetadataRaw))
                 {
                     var metadata = System.Text.Json.JsonDocument.Parse(userMetadataRaw);
                     if (metadata.RootElement.TryGetProperty("rol", out var rolElement))

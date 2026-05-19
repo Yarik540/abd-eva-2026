@@ -1,7 +1,5 @@
-﻿using abd.models.DTOs;
+using abd.models.DTOs;
 using abd.Services;
-
-
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json;
@@ -20,6 +18,7 @@ public class RegistrosController : ControllerBase
         _config = config;
         _embeddingService = embeddingService;
     }
+
     [HttpPost]
     public async Task<IActionResult> CrearRegistro([FromBody] RegistroCreateDTO dto)
     {
@@ -74,8 +73,7 @@ public class RegistrosController : ControllerBase
         if (nuevo != null && nuevo.ContainsKey("idreg"))
         {
             var idreg = nuevo["idreg"].GetInt32();
-            var textoParaEmbedding =
-    $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
+            var textoParaEmbedding = $"{dto.titulolibro} {dto.autor} {dto.contenidoreg}";
 
             await GuardarEmbedding(
                 client,
@@ -92,11 +90,11 @@ public class RegistrosController : ControllerBase
             latencia_ms = sw.ElapsedMilliseconds
         });
     }
+
     private async Task GuardarEmbedding(HttpClient client, string url, string key, int idreg, string texto)
     {
         var embedding = await _embeddingService.GenerarEmbeddingAsync(texto);
 
-        // ← mandar como array, no como string
         var jsonObj = new
         {
             idreg = idreg,
@@ -110,9 +108,7 @@ public class RegistrosController : ControllerBase
         request.Headers.Add("Authorization", $"Bearer {key}");
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        Console.WriteLine($"Embedding guardado: {response.StatusCode} - {body}");
+        await client.SendAsync(request);
     }
 
     private async Task GuardarLog(HttpClient client, string url, string key, string userId, string accion, string estado, int latencia, string mensaje)
@@ -135,21 +131,23 @@ public class RegistrosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> ObtenerRegistros([FromQuery] string? p_idusu)
+    public async Task<IActionResult> ListarApuntes([FromQuery] string? p_idusu = null)
     {
-        var userId = HttpContext.Items["userId"]?.ToString();
         var rol = HttpContext.Items["userRol"]?.ToString();
-
-        // Si viene p_idusu de n8n o similar, lo priorizamos
-        var finalUserId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : userId;
+        
+        // Priorizar p_idusu de la query si existe
+        var userId = !string.IsNullOrEmpty(p_idusu)
+            ? p_idusu
+            : HttpContext.Items["userId"]?.ToString();
 
         var url = _config["Supabase:Url"];
         var key = _config["Supabase:Key"];
         var client = _httpClientFactory.CreateClient();
 
+        // Admin ve todos si no se pasa un usuario específico, cliente solo los suyos
         var query = rol == "administrador" && string.IsNullOrEmpty(p_idusu)
             ? $"{url}/rest/v1/registros?select=*&order=idreg.desc"
-            : $"{url}/rest/v1/registros?select=*&idusu=eq.{finalUserId}&order=idreg.desc";
+            : $"{url}/rest/v1/registros?select=*&idusu=eq.{userId}&order=idreg.desc";
 
         var request = new HttpRequestMessage(HttpMethod.Get, query);
         request.Headers.Add("apikey", key);
@@ -165,27 +163,34 @@ public class RegistrosController : ControllerBase
     }
 
     [HttpGet("conteo")]
-    public async Task<IActionResult> ObtenerConteo([FromQuery] string? p_idusu)
+    public async Task<IActionResult> ContarMisRegistros([FromQuery] string? p_idusu = null)
     {
-        var userId = HttpContext.Items["userId"]?.ToString();
-        var finalUserId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : userId;
+        var userId = !string.IsNullOrEmpty(p_idusu) ? p_idusu : HttpContext.Items["userId"]?.ToString();
 
-        var url = _config["Supabase:Url"];
+        var url = _config["Supabase:Url"]?.TrimEnd('/');
         var key = _config["Supabase:Key"];
         var client = _httpClientFactory.CreateClient();
 
-        var query = $"{url}/rest/v1/registros?select=idreg&idusu=eq.{finalUserId}";
+        // Pedimos todos los registros de ese usuario
+        var query = $"{url}/rest/v1/registros?select=idreg&idusu=eq.{userId}";
+        
         var request = new HttpRequestMessage(HttpMethod.Get, query);
         request.Headers.Add("apikey", key);
         request.Headers.Add("Authorization", $"Bearer {key}");
 
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-
+        
         if (!response.IsSuccessStatusCode)
             return BadRequest(body);
 
         var lista = JsonSerializer.Deserialize<List<object>>(body);
-        return Ok(new { total_registros = lista?.Count ?? 0 });
+        int total = lista?.Count ?? 0;
+
+        return Ok(new { 
+            idusu = userId, 
+            total_registros = total,
+            mensaje = $"El usuario tiene un total de {total} registros ingresados." 
+        });
     }
 }
